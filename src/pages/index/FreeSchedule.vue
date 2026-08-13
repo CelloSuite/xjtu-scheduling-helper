@@ -430,6 +430,12 @@ const COLORS = [
   "#6f8fb9",
   "#c76e8d",
 ];
+const resolveCollege = (courseId, college) => {
+  const id = String(courseId || "").trim().toUpperCase();
+  if (id.startsWith("KN")) return "课内授课";
+  if (id.startsWith("WS")) return "小班实践";
+  return college;
+};
 export default {
   name: "FreeSchedule",
   created() {
@@ -594,7 +600,7 @@ export default {
             name: get(row, "课程名称"),
             className,
             credit: get(row, "学分") || "—",
-            college: get(row, "学院"),
+            college: resolveCollege(id, get(row, "学院")),
             teacher,
             meetings,
             rooms: [...new Set(meetings.map((meeting) => meeting.room))].join(
@@ -894,7 +900,7 @@ export default {
               teacher,
               meetings,
               rooms: [...new Set(meetings.map((m) => m.room))].join("；"),
-              college: get(r, "学院"),
+              college: resolveCollege(id, get(r, "学院")),
               major: get(r, "专业"),
               color: COLORS[Math.abs(hash) % COLORS.length],
             };
