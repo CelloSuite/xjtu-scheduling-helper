@@ -1,4 +1,4 @@
-name: Deploy to OSS
+name: Deploy to GitHub Pages
 
 on:
   push:
@@ -10,6 +10,8 @@ env:
 
 permissions:
   contents: read
+  pages: write
+  id-token: write
 
 jobs:
   build:
@@ -18,52 +20,32 @@ jobs:
     - uses: actions/checkout@v3
 
     - name: Set up Node.js
-      uses: actions/setup-node@v3
+      uses: actions/setup-node@v4
       with:
         node-version: ${{ env.NODE_VERSION }}
         cache: 'yarn'
 
-    - name: yarn install, and build
-      run: |
-        yarn --ignore-engines
-        yarn build
+    - name: Install dependencies
+      run: npm ci
 
-    - name: Upload artifact for deployment job
-      uses: actions/upload-artifact@v3
+    - name: Build website
+      run: npm run build
+
+    - name: Upload Pages artifact
+      uses: actions/upload-pages-artifact@v3
       with:
-        name: dist-app
         path: dist
 
   deploy:
-    strategy:
-      matrix:
-        include:
-          - environment: pre-production
-            url: https://pre.xk.shuosc.com
-          - environment: production
-            url: https://xk.shuosc.com
-    permissions:
-      contents: none
     runs-on: ubuntu-latest
-    environment: 
-      name: ${{ matrix.environment }}
-      url: ${{ matrix.url }}
-    concurrency: ${{ matrix.environment }}
     needs: build
-
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    concurrency:
+      group: github-pages
+      cancel-in-progress: false
     steps:
-    - name: Download artifact from build job
-      uses: actions/download-artifact@v3
-      with:
-        name: dist-app
-        path: dist
-
-    - name: Setup Alibaba Cloud OSS utility
-      run: |
-        curl https://gosspublic.alicdn.com/ossutil/install.sh | sudo bash
-        ossutil config -e ${{ secrets.OSS_ENDPOINT }} -i ${{ secrets.OSS_ACCESS_KEY_ID }} -k ${{ secrets.OSS_ACCESS_KEY_SECRET }}
-
-    - name: Deploy to ${{ matrix.environment }} environment
-      run: |
-        ossutil cp dist oss://${{ secrets.OSS_BUCKET }}/ --exclude "*.html" -urf && \
-        ossutil cp dist oss://${{ secrets.OSS_BUCKET }}/ --include "*.html" -urf --meta Cache-Control:no-cache
+    - name: Deploy to GitHub Pages
+      id: deployment
+      uses: actions/deploy-pages@v4

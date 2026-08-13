@@ -2,6 +2,8 @@ const path = require('path');
 const WorkerPlugin = require('worker-plugin');
 
 module.exports = {
+  publicPath:
+    process.env.GITHUB_ACTIONS === 'true' ? '/xjtu-scheduling-helper/' : '/',
   devServer: {
     proxy: {
       '/api': {
