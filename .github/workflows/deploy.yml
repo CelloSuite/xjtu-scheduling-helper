@@ -1,0 +1,69 @@
+name: Deploy to OSS
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+env:
+  NODE_VERSION: '18.x'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Set up Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: ${{ env.NODE_VERSION }}
+        cache: 'yarn'
+
+    - name: yarn install, and build
+      run: |
+        yarn --ignore-engines
+        yarn build
+
+    - name: Upload artifact for deployment job
+      uses: actions/upload-artifact@v3
+      with:
+        name: dist-app
+        path: dist
+
+  deploy:
+    strategy:
+      matrix:
+        include:
+          - environment: pre-production
+            url: https://pre.xk.shuosc.com
+          - environment: production
+            url: https://xk.shuosc.com
+    permissions:
+      contents: none
+    runs-on: ubuntu-latest
+    environment: 
+      name: ${{ matrix.environment }}
+      url: ${{ matrix.url }}
+    concurrency: ${{ matrix.environment }}
+    needs: build
+
+    steps:
+    - name: Download artifact from build job
+      uses: actions/download-artifact@v3
+      with:
+        name: dist-app
+        path: dist
+
+    - name: Setup Alibaba Cloud OSS utility
+      run: |
+        curl https://gosspublic.alicdn.com/ossutil/install.sh | sudo bash
+        ossutil config -e ${{ secrets.OSS_ENDPOINT }} -i ${{ secrets.OSS_ACCESS_KEY_ID }} -k ${{ secrets.OSS_ACCESS_KEY_SECRET }}
+
+    - name: Deploy to ${{ matrix.environment }} environment
+      run: |
+        ossutil cp dist oss://${{ secrets.OSS_BUCKET }}/ --exclude "*.html" -urf && \
+        ossutil cp dist oss://${{ secrets.OSS_BUCKET }}/ --include "*.html" -urf --meta Cache-Control:no-cache
