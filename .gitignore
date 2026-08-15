@@ -1,6 +1,7 @@
 .DS_Store
 node_modules
 /dist
+/my_own_plan/
 
 # local env files
 .env.local
