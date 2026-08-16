@@ -44,9 +44,14 @@
           type="range"
         />
       </section>
-      <button class="import-plan-button" @click="openPlanImport">
-        {{ t("importPlan") }}
-      </button>
+      <div class="import-actions">
+        <button class="import-catalog-button" @click="openCatalogImport">
+          {{ lang === "zh" ? "导入课程目录" : "Import Course" }}
+        </button>
+        <button class="import-plan-button" @click="startPlanImport">
+          {{ t("importPlan") }}
+        </button>
+      </div>
     </div>
     <div class="layout">
       <section class="card schedule">
@@ -173,7 +178,7 @@
               {{ t("plan") }} {{ planKeys.length }}</button>
           </nav>
           <template v-if="tab === 'search'"
-            ><div class="filters">
+            ><p class="course-term">{{ lang === "zh" ? `当前加载课程：${courseSource === "uploaded" ? "用户上传" : "2026秋"}。课程信息仅供参考，请以教务系统最新信息为准` : `Loaded courses: ${courseSource === "uploaded" ? "User Upload" : "Fall 2026"}. Course information is for reference only; please rely on the latest GMIS information.` }}</p><div class="filters">
               <input
                 @input="searchPage = 1"
                 v-model="filters.id"
@@ -278,7 +283,17 @@
               </div>
             </div>
             <section
-              v-for="group in groups"
+              v-for="type in parentGroupTypes"
+              :key="type"
+              class="parent-group"
+            >
+              <header class="parent-group-head">
+                <b>{{ groupLabel(type) }}</b>
+                <em :class="{ complete: hasParentMinimum(type) && parentGroupCredits(type) >= parentMinimumCredits(type) }">{{ lang === "zh" ? "已选" : "Selected" }} {{ parentGroupCredits(type) }} {{ t("creditUnit") }} / {{ lang === "zh" ? "最低要求" : "Minimum required" }} {{ parentMinimumCredits(type) }} {{ t("creditUnit") }}</em>
+              </header>
+              <div class="parent-group-children">
+            <section
+              v-for="group in groupsForType(type)"
               :key="group.id"
               class="group"
               :class="{
@@ -348,6 +363,8 @@
                     {{ t("removeGroup") }}
                   </button>
                 </article>
+              </div>
+            </section>
               </div>
             </section>
             <div class="course-list plan-list">
@@ -438,10 +455,7 @@
             "
           >
             <b>{{ groupLabel(group.name) }}</b
-            ><small
-              >{{ t("selected") }} {{ groupValue(group) }}
-              {{ group.unit === "course" ? t("courseUnit") : t("creditUnit") }}</small
-            >
+            ><small>{{ groupCourseSummary(group) }}</small>
           </button>
         </div>
         <p v-if="!groups.length">{{ t("noGroups") }}</p>
@@ -466,15 +480,71 @@
       <section class="modal plan-upload-modal">
         <button class="close" @click="planImportUpload = false">×</button>
         <h2>{{ t("readPlan") }}</h2>
-        <p>{{ t("planFileHint") }}</p>
+        <ol v-if="lang === 'zh'" class="import-steps">
+          <li>在新页面按 Ctrl+S，选择保存类型“网页，单个文件”</li>
+          <li>保存下载培养计划页面的.mhtml文件</li>
+          <li>点击按钮选择文件读取。</li>
+        </ol>
+        <ol v-else class="import-steps">
+          <li>On the new page, press Ctrl+S and choose “Webpage, Single File”.</li>
+          <li>Save the study-plan page as a .mhtml file.</li>
+          <li>Click the button to select and read the file.</li>
+        </ol>
         <input
           ref="planFileInput"
           class="plan-file-input"
-          accept=".htm,.html,text/html"
+          accept=".mht,.mhtml,.htm,.html,multipart/related,text/html"
           type="file"
           @change="readPlanFile"
         />
         <button class="primary" @click="choosePlanFile">{{ t("choosePlanFile") }}</button>
+      </section>
+    </div>
+    <div v-if="planCampusModal" class="mask" @click.self="planCampusModal = false">
+      <section class="modal campus-modal">
+        <button class="close" @click="planCampusModal = false">×</button>
+        <h2>{{ lang === "zh" ? "在哪个校区上课？" : "Which campus do you attend?" }}</h2>
+        <label v-for="campus in planCampuses" :key="campus" class="campus-option" :class="{ selected: planCampus === campus }">
+          <input v-model="planCampus" :value="campus" type="radio" />
+          {{ campus }}
+        </label>
+        <button class="primary" :disabled="!planCampus" @click="confirmPlanCampus">{{ t("confirm") }}</button>
+      </section>
+    </div>
+    <div
+      v-if="catalogImportUpload"
+      class="mask plan-import-mask"
+      @click.self="catalogImportUpload = false"
+    >
+      <section class="modal plan-upload-modal">
+        <button class="close" @click="catalogImportUpload = false">×</button>
+        <h2>{{ lang === "zh" ? "读取课程目录" : "Read Course Catalog" }}</h2>
+        <ol v-if="lang === 'zh'" class="import-steps">
+          <li>在“每页 15 记录”的数字处右击“检查”</li>
+          <li>在 Element 选项卡打开荧光所在列下拉框</li>
+          <li>将 option value=“100”的值改到大于总课程条数</li>
+          <li>在网页中选择“每页 100 记录”，等待数据加载完成</li>
+          <li>在新页面按 Ctrl+S，选择保存类型“网页，单个文件”</li>
+          <li>保存下载课程目录页面的.mhtml文件</li>
+          <li>点击按钮选择文件读取。</li>
+        </ol>
+        <ol v-else class="import-steps">
+          <li>Right-click the number in “15 records per page” and choose Inspect.</li>
+          <li>In the Elements tab, open the highlighted dropdown.</li>
+          <li>Change option value=“100” to a value greater than the total course count.</li>
+          <li>Choose “100 records per page” and wait for the data to finish loading.</li>
+          <li>On the new page, press Ctrl+S and choose “Webpage, Single File”.</li>
+          <li>Save the course-catalog page as a .mhtml file.</li>
+          <li>Click the button to select and read the file.</li>
+        </ol>
+        <input
+          ref="catalogFileInput"
+          class="plan-file-input"
+          accept=".mht,.mhtml,.htm,.html,multipart/related,text/html"
+          type="file"
+          @change="readCatalogFile"
+        />
+        <button class="primary" @click="chooseCatalogFile">{{ lang === "zh" ? "选择课程目录文件" : "Choose Course Catalog File" }}</button>
       </section>
     </div>
     <div v-if="planImportWaiting" class="mask plan-import-mask">
@@ -506,7 +576,8 @@
             </tbody>
           </table>
         </div>
-        <p class="read-failed-text">❌ {{ t("planReadFailedHint") }}</p>
+        <p class="read-failed-text" v-if="lang === 'zh'">❌ 以下课程读取失败，可能是<span class="failed-reasons">缺乏排课信息、选错校区或本学期不开课</span>。若是全校课表中缺乏排课信息，请联系教务老师添加。</p>
+        <p class="read-failed-text" v-else>❌ The following courses could not be read. They may <span class="failed-reasons">lack timetable information, belong to a different campus, or not be offered this term</span>. If the university timetable lacks the information, please contact the academic office.</p>
         <div class="plan-review-table-wrap">
           <table class="plan-review-table">
             <thead><tr><th>{{ t("group") }}</th><th>{{ t("courseId") }}</th><th>{{ t("courseName") }}</th></tr></thead>
@@ -585,6 +656,8 @@ export default {
       planKeys: [],
       activeKeys: [],
       groups: [],
+      groupTypes: ["外语课组", "公共课组", "专业课组", "选修课组", "必修环节"],
+      categoryMinimums: {},
       filters: {
         id: "",
         name: "",
@@ -598,7 +671,13 @@ export default {
       groupModal: null,
       conflictModal: null,
       planImportWaiting: false,
+      planCampusModal: false,
+      planCampus: "",
+      planCampuses: ["创新港校区", "兴庆校区", "雁塔校区", "待定"],
+      pendingImport: "",
       planImportUpload: false,
+      catalogImportUpload: false,
+      courseSource: "default",
       planImportReview: null,
       planImportNotice: "",
       planImportNoticeCenter: false,
@@ -677,22 +756,28 @@ export default {
         (w) => this.conflictsFor(w).length
       );
     },
+    parentGroupTypes() {
+      return this.groupTypes.filter((type) =>
+        this.groupsForType(type).length || Object.prototype.hasOwnProperty.call(this.categoryMinimums, type)
+      );
+    },
   },
   watch: {
     planKeys: { deep: true, handler() { this.queueHistory(); } },
     activeKeys: { deep: true, handler() { this.queueHistory(); } },
     groups: { deep: true, handler() { this.queueHistory(); } },
+    categoryMinimums: { deep: true, handler() { this.queueHistory(); } },
   },
   methods: {
     t(key) {
       const importText = {
-        zh: { readPlan: "读取培养方案", planFileHint: "请在新页面按 Ctrl+S，选择保存类型“网页，仅HTML”后保存下载培养计划页面的 HTML 文件，再在此选择文件读取。", choosePlanFile: "选择培养方案文件", waitingLogin: "等待登录", loginConfirmHint: "完成后点击确认", planReadResult: "培养方案读取结果", group: "所在分组", noImportableCourses: "没有可导入课程", planReadFailedHint: "以下课程读取失败，可能是缺乏排课信息或本学期不开课。若是全校课表中缺乏排课信息，请联系教务老师添加。", noReadFailures: "无读取失败课程", confirmImport: "确认导入", popupBlocked: "弹窗被浏览器拦截，请允许弹窗后重试", invalidPlanFile: "无法识别该培养方案文件，请确认下载的是培养计划查询页面" },
-        en: { readPlan: "Read Study Plan", planFileHint: "On the new page, press Ctrl+S and choose “Webpage, HTML Only”. Save the study-plan HTML file, then select it here.", choosePlanFile: "Choose Plan File", waitingLogin: "Waiting for Login", loginConfirmHint: "Click Confirm after you have finished.", planReadResult: "Study Plan Reading Results", group: "Group", noImportableCourses: "No courses available to import", planReadFailedHint: "The following courses could not be read. They may lack timetable information or may not be offered this term. If the university timetable lacks the information, please contact the academic office.", noReadFailures: "No failed courses", confirmImport: "Confirm Import", popupBlocked: "The popup was blocked. Please allow popups and try again.", invalidPlanFile: "This study-plan file could not be recognized. Please confirm it was saved from the study-plan query page." },
+        zh: { readPlan: "读取培养方案", planFileHint: "请在新页面按 Ctrl+S，选择保存类型“网页，单个文件”后保存下载培养计划页面的 MHTML 文件，再在此选择文件读取。", choosePlanFile: "选择培养方案文件", waitingLogin: "等待登录", loginConfirmHint: "完成后点击确认", planReadResult: "培养方案读取结果", group: "所在分组", noImportableCourses: "没有可导入课程", planReadFailedHint: "以下课程读取失败，可能是缺乏排课信息或本学期不开课。若是全校课表中缺乏排课信息，请联系教务老师添加。", noReadFailures: "无读取失败课程", confirmImport: "确认导入", popupBlocked: "弹窗被浏览器拦截，请允许弹窗后重试", invalidPlanFile: "无法识别该培养方案文件，请确认下载的是培养计划查询页面" },
+        en: { readPlan: "Read Study Plan", planFileHint: "On the new page, press Ctrl+S and choose “Webpage, Single File”. Save the study-plan MHTML file, then select it here.", choosePlanFile: "Choose Plan File", waitingLogin: "Waiting for Login", loginConfirmHint: "Click Confirm after you have finished.", planReadResult: "Study Plan Reading Results", group: "Group", noImportableCourses: "No courses available to import", planReadFailedHint: "The following courses could not be read. They may lack timetable information or may not be offered this term. If the university timetable lacks the information, please contact the academic office.", noReadFailures: "No failed courses", confirmImport: "Confirm Import", popupBlocked: "The popup was blocked. Please allow popups and try again.", invalidPlanFile: "This study-plan file could not be recognized. Please confirm it was saved from the study-plan query page." },
       };
       if (importText[this.lang][key]) return importText[this.lang][key];
       const text = {
-        zh: { graduateSchool: "研究生院", academicSystem: "教务系统", switchLanguage: "切换中英文", reset: "重做", mySchedule: "我的课表", importPlan: "导入培养方案", weeklySchedule: "周课表", allScheduled: "全部已上课表课程", clickToPlan: "点击课程定位至培养方案", period: "节次", class: "班级", teacher: "教师", location: "地点", noScheduledCourses: "暂未加入上课表的课程", unscheduledCourses: "待安排课程", unscheduledHint: "以下课程缺少上课时间，暂无法排入周课表", courseId: "课程号", courseName: "课程名称", action: "操作", removeSchedule: "移出课表", noUnscheduledCourses: "暂无待安排课程", courseSearch: "课程检索", plan: "培养方案", college: "学院", campus: "校区", classTime: "上课时间", clear: "清空", credit: "学分", collegeMissing: "未填写学院", viewPlan: "查看方案", addPlan: "加入方案", previousPage: "上一页", nextPage: "下一页", planHint: "点击课程卡片即可加入或移出课表。", collapseAll: "关闭全部", expandAll: "展开全部", maxN: "最多 n", courseUnit: "门", creditUnit: "分", addGroup: "添加组", done: "完成", deleteGroup: "删除组", delete: "删除", collapse: "收起", expand: "展开", selected: "已选", required: "应选", unlimited: "不限", removeGroup: "移出组", cancel: "取消", conflicts: "冲突课程", handle: "处理", noConflicts: "当前周次没有课程冲突", addToGroup: "加入组", selectGroup: "请选择课程组：", noGroups: "暂无课程组", resolveConflicts: "解决课程冲突", resolveHint: "保留一门课程，其余移出课表。", confirm: "确认处理", foreignGroup: "外语课组", publicGroup: "公共课组", professionalGroup: "专业课组", electiveGroup: "选修课组", requiredModule: "必修环节" },
-        en: { graduateSchool: "Graduate School", academicSystem: "GMIS", switchLanguage: "Switch language", reset: "Reset", mySchedule: "My Schedule", importPlan: "Import Plan", weeklySchedule: "Weekly Schedule", allScheduled: "All scheduled courses", clickToPlan: "Click a course to locate it in the plan", period: "Period", class: "Class", teacher: "Instructor", location: "Location", noScheduledCourses: "No scheduled courses yet", unscheduledCourses: "Unscheduled Courses", unscheduledHint: "These courses have no class time and cannot be placed on the timetable.", courseId: "Course ID", courseName: "Course Name", action: "Action", removeSchedule: "Remove", noUnscheduledCourses: "No unscheduled courses", courseSearch: "Course Search", plan: "Study Plan", college: "College", campus: "Campus", classTime: "Class Time", clear: "Clear", credit: "Credits", collegeMissing: "College not provided", viewPlan: "View Plan", addPlan: "Add to Plan", previousPage: "Previous", nextPage: "Next", planHint: "Tap a course card to add it to or remove it from the timetable.", collapseAll: "Collapse All", expandAll: "Expand All", maxN: "Max. n", courseUnit: "courses", creditUnit: "credits", addGroup: "Add Group", done: "Done", deleteGroup: "Delete Group", delete: "Delete", collapse: "Collapse", expand: "Expand", selected: "Selected", required: "Required", unlimited: "Any", removeGroup: "Remove", cancel: "Cancel", conflicts: "Conflicts", handle: "Resolve", noConflicts: "No course conflicts this week", addToGroup: "Add to Course Group", selectGroup: "Select a course group:", noGroups: "No course groups", resolveConflicts: "Resolve Conflicts", resolveHint: "Keep one course and remove the others from the timetable.", confirm: "Confirm", foreignGroup: "Foreign Language", publicGroup: "General Education", professionalGroup: "Professional", electiveGroup: "Elective", requiredModule: "Required Component" },
+        zh: { graduateSchool: "研究生院", academicSystem: "教务系统", switchLanguage: "切换中英文", reset: "重做", mySchedule: "我的课表", importPlan: "导入培养方案", weeklySchedule: "周课表", allScheduled: "全部已上课表课程", clickToPlan: "点击课程定位至培养方案", period: "节次", class: "班级", teacher: "教师", location: "地点", noScheduledCourses: "暂未加入上课表的课程", unscheduledCourses: "待安排课程", unscheduledHint: "以下课程缺少上课时间，暂无法排入周课表", courseId: "课程号", courseName: "课程名称", action: "操作", removeSchedule: "移出课表", noUnscheduledCourses: "暂无待安排课程", courseSearch: "课程检索", plan: "培养方案", college: "学院", campus: "校区", classTime: "上课时间", clear: "清空", credit: "学分", collegeMissing: "未填写学院", viewPlan: "查看方案", addPlan: "加入方案", previousPage: "上一页", nextPage: "下一页", planHint: "点击课程卡片即可加入或移出课表。因外语课组与公共课组为志愿式选课，建议导入培养方案后将两课组删除，在课程检索中直接选班。", collapseAll: "关闭全部", expandAll: "展开全部", maxN: "最多 n", courseUnit: "门", creditUnit: "分", addGroup: "添加组", done: "完成", deleteGroup: "删除组", delete: "删除", collapse: "收起", expand: "展开", selected: "已选", required: "应选", unlimited: "不限", removeGroup: "移出组", cancel: "取消", conflicts: "冲突课程", handle: "处理", noConflicts: "当前周次没有课程冲突", addToGroup: "加入组", selectGroup: "请选择课程组：", noGroups: "暂无课程组", resolveConflicts: "解决课程冲突", resolveHint: "保留一门课程，其余移出课表。", confirm: "确认处理", foreignGroup: "外语课组", publicGroup: "公共课组", professionalGroup: "专业课组", electiveGroup: "选修课组", requiredModule: "必修环节" },
+        en: { graduateSchool: "Graduate School", academicSystem: "GMIS", switchLanguage: "Switch language", reset: "Reset", mySchedule: "My Schedule", importPlan: "Import Plan", weeklySchedule: "Weekly Schedule", allScheduled: "All scheduled courses", clickToPlan: "Click a course to locate it in the plan", period: "Period", class: "Class", teacher: "Instructor", location: "Location", noScheduledCourses: "No scheduled courses yet", unscheduledCourses: "Unscheduled Courses", unscheduledHint: "These courses have no class time and cannot be placed on the timetable.", courseId: "Course ID", courseName: "Course Name", action: "Action", removeSchedule: "Remove", noUnscheduledCourses: "No unscheduled courses", courseSearch: "Course Search", plan: "Study Plan", college: "College", campus: "Campus", classTime: "Class Time", clear: "Clear", credit: "Credits", collegeMissing: "College not provided", viewPlan: "View Plan", addPlan: "Add to Plan", previousPage: "Previous", nextPage: "Next", planHint: "Tap a course card to add it to or remove it from the timetable. Foreign Language and General Education groups use preference-based selection; after importing a study plan, consider deleting these two groups and choosing a class directly in Course Search.", collapseAll: "Collapse All", expandAll: "Expand All", maxN: "Max. n", courseUnit: "courses", creditUnit: "credits", addGroup: "Add Group", done: "Done", deleteGroup: "Delete Group", delete: "Delete", collapse: "Collapse", expand: "Expand", selected: "Selected", required: "Required", unlimited: "Any", removeGroup: "Remove", cancel: "Cancel", conflicts: "Conflicts", handle: "Resolve", noConflicts: "No course conflicts this week", addToGroup: "Add to Course Group", selectGroup: "Select a course group:", noGroups: "No course groups", resolveConflicts: "Resolve Conflicts", resolveHint: "Keep one course and remove the others from the timetable.", confirm: "Confirm", foreignGroup: "Foreign Language", publicGroup: "General Education", professionalGroup: "Professional", electiveGroup: "Elective", requiredModule: "Required Component" },
       };
       return text[this.lang][key] || key;
     },
@@ -811,7 +896,8 @@ export default {
         .slice(1)
         .map((row) => {
           const meetings = [];
-          for (let index = 1; index <= 14; index += 1) {
+          const slotCount = headers.filter((header) => /^星期几\d+$/.test(header)).length;
+          for (let index = 1; index <= slotCount; index += 1) {
             const day = Number(get(row, `星期几${index}`));
             const periods = get(row, `节次${index}`);
             if (!day || !periods) continue;
@@ -840,6 +926,7 @@ export default {
             credit: get(row, "学分") || "/",
             college: resolveCollege(id, get(row, "学院")),
             teacher,
+            primaryRoom: get(row, "教室1"),
             meetings,
             rooms: [...new Set(meetings.map((meeting) => meeting.room))].join(
               "；"
@@ -852,6 +939,7 @@ export default {
       this.planKeys = [];
       this.activeKeys = [];
       this.groups = [];
+      this.categoryMinimums = {};
       this.searchPage = 1;
       this.initial = this.snapshot();
       this.resetHistory();
@@ -861,6 +949,7 @@ export default {
         planKeys: this.planKeys,
         activeKeys: this.activeKeys,
         groups: this.groups,
+        categoryMinimums: this.categoryMinimums,
       });
     },
     resetHistory() {
@@ -888,6 +977,7 @@ export default {
       this.planKeys = state.planKeys;
       this.activeKeys = state.activeKeys;
       this.groups = state.groups;
+      this.categoryMinimums = state.categoryMinimums || {};
       this.$nextTick(() => {
         this.historyRestoring = false;
       });
@@ -910,6 +1000,7 @@ export default {
       this.planKeys = x.planKeys;
       this.activeKeys = x.activeKeys;
       this.groups = x.groups;
+      this.categoryMinimums = x.categoryMinimums || {};
       this.week = 1;
       this.tab = "search";
       this.focusedKey = "";
@@ -920,16 +1011,34 @@ export default {
       this.noticeMsg(this.lang === "zh" ? "已恢复到打开状态" : "Restored to the initial state");
     },
     openPlanImport() {
+      this.pendingImport = "plan";
+      this.openImportLogin("xjtu-curriculum-plan-login");
+    },
+    startPlanImport() {
+      this.planCampus = "";
+      this.planCampusModal = true;
+    },
+    confirmPlanCampus() {
+      if (!this.planCampus) return;
+      this.planCampusModal = false;
+      this.openPlanImport();
+    },
+    openCatalogImport() {
+      this.pendingImport = "catalog";
+      this.openImportLogin("xjtu-course-catalog-login");
+    },
+    openImportLogin(popupName) {
       this.planImportWaiting = true;
       const width = Math.max(640, Math.floor(window.screen.availWidth * 0.75));
       const height = Math.max(640, window.screen.availHeight);
       planLoginPopup = window.open(
         "https://gmis.xjtu.edu.cn/pyxx/",
-        "xjtu-curriculum-plan-login",
+        popupName,
         `popup=yes,width=${width},height=${height},left=0,top=0,resizable=yes,scrollbars=yes`
       );
       if (!planLoginPopup) {
         this.planImportWaiting = false;
+        this.pendingImport = "";
         this.planImportNoticeMsg(this.t("popupBlocked"));
       }
     },
@@ -939,13 +1048,22 @@ export default {
       this.planImportWaiting = false;
       const width = Math.max(640, Math.floor(window.screen.availWidth * 0.75));
       const height = Math.max(640, window.screen.availHeight);
+      const isCatalogImport = this.pendingImport === "catalog";
       planLookupPopup = window.open(
-        "https://gmis.xjtu.edu.cn/pyxx/pygl/pyjhcx",
-        "xjtu-curriculum-plan-lookup",
+        isCatalogImport
+          ? "https://gmis.xjtu.edu.cn/pyxx/pygl/pkjlcx/index"
+          : "https://gmis.xjtu.edu.cn/pyxx/pygl/pyjhcx",
+        isCatalogImport ? "xjtu-course-catalog-lookup" : "xjtu-curriculum-plan-lookup",
         `popup=yes,width=${width},height=${height},left=0,top=0,resizable=yes,scrollbars=yes`
       );
       if (!planLookupPopup) {
+        this.pendingImport = "";
         this.planImportNoticeMsg(this.t("popupBlocked"));
+        return;
+      }
+      if (isCatalogImport) {
+        this.pendingImport = "";
+        this.catalogImportUpload = true;
         return;
       }
       this.planImportUpload = true;
@@ -955,17 +1073,201 @@ export default {
       planLookupPopup = null;
       this.$refs.planFileInput.click();
     },
+    chooseCatalogFile() {
+      if (planLookupPopup && !planLookupPopup.closed) planLookupPopup.close();
+      planLookupPopup = null;
+      this.$refs.catalogFileInput.click();
+    },
     async readPlanFile(event) {
       const file = event.target.files && event.target.files[0];
       if (!file) return;
       try {
-        this.planImportReview = this.parsePlanHtml(await file.text());
+        const rawText = await file.text();
+        const planHtml = /\.mht(?:ml)?$/i.test(file.name)
+          ? this.extractPlanHtmlFromMhtml(rawText)
+          : rawText;
+        this.planImportReview = this.parsePlanHtml(planHtml);
         this.planImportUpload = false;
       } catch (error) {
         this.planImportNoticeMsg(this.t("invalidPlanFile"));
       } finally {
         event.target.value = "";
       }
+    },
+    async readCatalogFile(event) {
+      const file = event.target.files && event.target.files[0];
+      if (!file) return;
+      try {
+        const rawText = await file.text();
+        const catalogHtml = /\.mht(?:ml)?$/i.test(file.name)
+          ? this.extractPlanHtmlFromMhtml(rawText)
+          : rawText;
+        const catalog = this.parseCourseCatalogHtml(catalogHtml);
+        this.applyCourseRows(catalog.rows);
+        this.courseSource = "uploaded";
+        this.clearFilters();
+        this.tab = "search";
+        this.catalogImportUpload = false;
+        this.noticeMsg(this.lang === "zh" ? `读取 ${catalog.courseCount} 门课程，${catalog.classCount} 个课程+班级组合` : `Read ${catalog.courseCount} courses and ${catalog.classCount} course-class combinations.`);
+      } catch (error) {
+        this.planImportNoticeMsg(this.lang === "zh" ? "无法识别该课程目录文件，请确认下载的是排课记录查询页面" : "This course catalog file could not be recognized. Please confirm it was saved from the course catalog page.");
+      } finally {
+        event.target.value = "";
+      }
+    },
+    extractPlanHtmlFromMhtml(text) {
+      const boundaryMatch = text.match(/boundary\s*=\s*"?([^";\r\n]+)"?/i);
+      if (!boundaryMatch) throw new Error("missing mhtml boundary");
+      const parts = text.split(`--${boundaryMatch[1]}`);
+      const htmlPart = parts.find((part) => /^\s*Content-Type:\s*text\/html\b/im.test(part));
+      if (!htmlPart) throw new Error("missing mhtml html part");
+      const separator = htmlPart.match(/\r?\n\r?\n/);
+      if (!separator || separator.index === undefined) throw new Error("missing mhtml body");
+      const headers = htmlPart.slice(0, separator.index);
+      const body = htmlPart.slice(separator.index + separator[0].length);
+      if (/Content-Transfer-Encoding:\s*base64/i.test(headers)) {
+        const binary = atob(body.replace(/\s/g, ""));
+        return new TextDecoder("utf-8").decode(Uint8Array.from(binary, (char) => char.charCodeAt(0)));
+      }
+      return this.decodeQuotedPrintable(body);
+    },
+    decodeQuotedPrintable(source) {
+      const normalized = source.replace(/=\r?\n/g, "");
+      const bytes = [];
+      for (let index = 0; index < normalized.length; index += 1) {
+        if (normalized[index] === "=" && /^[0-9a-f]{2}$/i.test(normalized.slice(index + 1, index + 3))) {
+          bytes.push(parseInt(normalized.slice(index + 1, index + 3), 16));
+          index += 2;
+        } else {
+          const code = normalized.charCodeAt(index);
+          if (code <= 255) bytes.push(code);
+          else bytes.push(...new TextEncoder().encode(normalized[index]));
+        }
+      }
+      return new TextDecoder("utf-8").decode(new Uint8Array(bytes));
+    },
+    formatCatalogCourseId(value) {
+      let courseId = String(value || "").trim().replace(/\.0$/, "");
+      if (/^\d{5}$/.test(courseId)) courseId = `0${courseId}`;
+      return courseId;
+    },
+    catalogCollege(courseId) {
+      const colleges = {
+        "01": "机械工程学院", "02": "材料科学与工程学院", "03": "能源与动力工程学院", "04": "电气工程学院", "05": "电子与信息学部", "06": "航天航空学院", "07": "数学与统计学院", "08": "管理学院", "09": "理学院", "10": "人文社会科学学院", "11": "软件学院", "12": "外国语学院", "13": "生命科学与技术学院", "14": "马克思主义学院", "15": "医学部", "16": "化学工程与技术学院", "17": "医学部", "18": "公共政策与管理学院", "19": "经济与金融学院", "21": "金禾经济研究中心", "22": "人居环境与建筑工程学院", "23": "继续教育学院", "24": "法学院", "25": "研究生院(苏州)", "26": "MBA中心", "27": "国际教育学院", "28": "前沿科学技术研究院", "29": "工程博士中心", "30": "可持续发展学院", "31": "体育学院", "32": "新闻与新媒体学院", "33": "物理学院", "34": "化学学院", "35": "联合设计与创新学院", "36": "人工智能学院", "37": "仪器科学与技术学院", "81": "就创中心", "96": "国家卓越工程师学院", "97": "国家储能技术产教融合创新平台(中心)", "98": "未来技术学院", "99": "研究生院", "00": "其他",
+      };
+      return colleges[String(courseId || "").slice(0, 2)] || "";
+    },
+    parseCatalogSchedule(value) {
+      const source = String(value || "").replace(/\s+/g, "");
+      const roomMatches = [...source.matchAll(/((?:创新港|兴庆|雁塔|曲江)校区-[^\s周]+)/g)];
+      const sections = roomMatches.length
+        ? roomMatches.map((match, index) => ({
+            room: match[1],
+            text: source.slice(match.index + match[0].length, roomMatches[index + 1] ? roomMatches[index + 1].index : source.length),
+          }))
+        : [{ room: "", text: source }];
+      const dayMap = { 一: 1, 二: 2, 三: 3, 四: 4, 五: 5, 六: 6, 日: 7 };
+      const schedules = [];
+      sections.forEach((section) => {
+        const weekMatches = [...section.text.matchAll(/周次:第(\d+(?:-\d+)?)周\s*连续周/g)];
+        weekMatches.forEach((weekMatch, index) => {
+          const weekText = weekMatch[1].includes("-") ? weekMatch[1] : `${weekMatch[1]}-${weekMatch[1]}`;
+          const timeText = section.text.slice(weekMatch.index + weekMatch[0].length, weekMatches[index + 1] ? weekMatches[index + 1].index : section.text.length);
+          [...timeText.matchAll(/星期([一二三四五六日])([^星期]*)/g)].forEach((dayMatch) => {
+            const periods = [...new Set([...dayMatch[2].matchAll(/(?:上|下|晚)(\d+)/g)].map((periodMatch) => Number(periodMatch[1])))]
+              .sort((left, right) => left - right);
+            if (dayMap[dayMatch[1]] && periods.length) {
+              schedules.push({ day: dayMap[dayMatch[1]], periods: periods.join(","), weekText, room: section.room || "待定" });
+            }
+          });
+        });
+      });
+      return schedules;
+    },
+    mergeCatalogSchedules(schedules) {
+      let current = schedules.map((schedule) => ({ ...schedule }));
+      while (true) {
+        const byPeriod = new Map();
+        current.forEach((schedule) => {
+          const key = `${schedule.room}|${schedule.day}|${schedule.weekText}`;
+          const item = byPeriod.get(key) || { ...schedule, periods: [] };
+          item.periods.push(...String(schedule.periods).split(",").map(Number));
+          byPeriod.set(key, item);
+        });
+        const periodMerged = [...byPeriod.values()].map((schedule) => ({
+          ...schedule,
+          periods: [...new Set(schedule.periods)].sort((left, right) => left - right).join(","),
+        }));
+        const byWeek = new Map();
+        periodMerged.forEach((schedule) => {
+          const key = `${schedule.room}|${schedule.day}|${schedule.periods}`;
+          const items = byWeek.get(key) || [];
+          items.push(schedule);
+          byWeek.set(key, items);
+        });
+        const next = [];
+        byWeek.forEach((items) => {
+          items.sort((left, right) => Number(left.weekText.split("-")[0]) - Number(right.weekText.split("-")[0]));
+          let merged = null;
+          items.forEach((item) => {
+            const [start, end] = item.weekText.split("-").map(Number);
+            if (merged && start <= merged.end + 1) {
+              merged.end = Math.max(merged.end, end);
+            } else {
+              if (merged) next.push({ ...merged.item, weekText: `${merged.start}-${merged.end}` });
+              merged = { item, start, end };
+            }
+          });
+          if (merged) next.push({ ...merged.item, weekText: `${merged.start}-${merged.end}` });
+        });
+        if (next.length >= current.length) return next;
+        current = next;
+      }
+    },
+    parseCourseCatalogHtml(text) {
+      const documentNode = new DOMParser().parseFromString(text, "text/html");
+      const table = documentNode.querySelector("#objTables");
+      if (!table) throw new Error("missing course catalog table");
+      const duplicateClasses = new Map();
+      const courses = [];
+      table.querySelectorAll("tbody tr").forEach((row) => {
+        const cells = Array.from(row.children)
+          .filter((cell) => cell.tagName === "TD")
+          .map((cell) => cell.textContent.replace(/\s+/g, " ").trim());
+        const courseId = this.formatCatalogCourseId(cells[1]);
+        const courseName = cells[2] || "";
+        if (!courseId || !courseName) return;
+        const originalClassName = cells[3] || "未分班";
+        const duplicateKey = `${courseId}-${originalClassName}`;
+        const duplicateIndex = duplicateClasses.get(duplicateKey) || 0;
+        duplicateClasses.set(duplicateKey, duplicateIndex + 1);
+        courses.push({
+          id: courseId,
+          college: this.catalogCollege(courseId),
+          name: courseName,
+          className: duplicateIndex ? `${originalClassName}_${duplicateIndex}` : originalClassName,
+          credit: cells[4] || "/",
+          hours: cells[5] || "",
+          teacher: cells[6] || "",
+          schedules: this.mergeCatalogSchedules(this.parseCatalogSchedule(cells[7])),
+        });
+      });
+      if (!courses.length) throw new Error("empty course catalog");
+      const maxSlots = Math.max(...courses.map((course) => course.schedules.length), 0);
+      const headers = ["课程编号", "学院", "课程名称", "班级", "学分", "学时", "主讲教师"];
+      for (let index = 1; index <= maxSlots; index += 1) headers.push(`教室${index}`, `星期几${index}`, `节次${index}`, `周次${index}`);
+      const rows = [headers, ...courses.map((course) => {
+        const record = { "课程编号": course.id, "学院": course.college, "课程名称": course.name, "班级": course.className, "学分": course.credit, "学时": course.hours, "主讲教师": course.teacher };
+        course.schedules.forEach((schedule, index) => {
+          const number = index + 1;
+          record[`教室${number}`] = schedule.room;
+          record[`星期几${number}`] = schedule.day;
+          record[`节次${number}`] = schedule.periods;
+          record[`周次${number}`] = schedule.weekText;
+        });
+        return headers.map((header) => record[header] || "");
+      })];
+      return { rows, courseCount: new Set(courses.map((course) => course.id)).size, classCount: courses.length };
     },
     parsePlanHtml(text) {
       const documentNode = new DOMParser().parseFromString(text, "text/html");
@@ -977,6 +1279,7 @@ export default {
         必修环节: "必修环节",
       };
       const selected = [];
+      const categoryMinimums = {};
       const lastGroupNumberByType = new Map();
       const unnamedGroupNumberByType = new Map();
       let currentType = "";
@@ -984,6 +1287,8 @@ export default {
         if (row.classList.contains("tables_set_query")) {
           const category = (row.querySelector("b") || {}).textContent || "";
           currentType = categoryMap[category.trim()] || "";
+          const requirement = row.textContent.match(/最低要求学分\s*\(?\s*(\d+(?:\.\d+)?)/);
+          if (currentType && requirement) categoryMinimums[currentType] = Number(requirement[1]);
           unnamedGroupNumberByType.delete(currentType);
           return;
         }
@@ -1031,6 +1336,7 @@ export default {
         const importedId = String(item.courseId).replace(/\s+/g, "");
         const courseKeys = this.courses
           .filter((course) => {
+            if (!this.matchesPlanCampus(course)) return false;
             const localId = String(course.id).replace(/\s+/g, "");
             return item.type === "外语课组"
               ? localId.slice(-6) === importedId.slice(-6)
@@ -1039,12 +1345,19 @@ export default {
           .map((course) => course.key);
         (courseKeys.length ? success : failed).push({ ...item, courseKeys });
       });
-      return { success, failed };
+      return { success, failed, categoryMinimums };
+    },
+    matchesPlanCampus(course) {
+      if (this.planCampus === "待定") return true;
+      const firstRoom = String(course.primaryRoom || course.meetings[0]?.room || "");
+      const hasCampus = /(?:创新港|兴庆|雁塔|曲江)校区/.test(firstRoom);
+      return !hasCampus || firstRoom.includes(this.planCampus);
     },
     applyPlanImport() {
       const review = this.planImportReview;
       if (!review) return;
       const importedGroups = new Map();
+      this.categoryMinimums = { ...this.categoryMinimums, ...(review.categoryMinimums || {}) };
       review.success.forEach((item) => {
         let group = importedGroups.get(item.groupKey);
         if (!group) {
@@ -1212,6 +1525,26 @@ export default {
     coursesInGroup(g) {
       return this.courses.filter((c) => g.courseKeys.includes(c.key));
     },
+    groupsForType(type) {
+      return this.groups.filter((group) => group.type === type);
+    },
+    groupCourseSummary(group) {
+      const names = [...new Set(this.coursesInGroup(group).map((course) => course.name).filter(Boolean))];
+      if (!names.length) return this.lang === "zh" ? "暂无课程" : "No courses";
+      return `${names.slice(0, 2).join("、")}${names.length > 2 ? "…" : ""}`;
+    },
+    parentGroupCredits(type) {
+      const keys = new Set(this.groupsForType(type).flatMap((group) => group.courseKeys));
+      const selected = this.courses.filter((course) => keys.has(course.key) && this.activeKeys.includes(course.key));
+      const uniqueCourses = [...new Map(selected.map((course) => [course.id, course])).values()];
+      return uniqueCourses.reduce((sum, course) => sum + (Number(course.credit) || 0), 0);
+    },
+    parentMinimumCredits(type) {
+      return Number(this.categoryMinimums[type] || 0);
+    },
+    hasParentMinimum(type) {
+      return Object.prototype.hasOwnProperty.call(this.categoryMinimums, type);
+    },
     groupValue(g) {
       const list = this.coursesInGroup(g).filter((course) =>
         this.activeKeys.includes(course.key)
@@ -1231,7 +1564,14 @@ export default {
       g.courseKeys = g.courseKeys.filter((k) => k !== key);
     },
     deleteGroup(g) {
+      const courseKeys = new Set(g.courseKeys);
+      this.planKeys = this.planKeys.filter((key) => !courseKeys.has(key));
+      this.activeKeys = this.activeKeys.filter((key) => !courseKeys.has(key));
+      this.groups.forEach((group) => {
+        group.courseKeys = group.courseKeys.filter((key) => !courseKeys.has(key));
+      });
       this.groups = this.groups.filter((x) => x.id !== g.id);
+      if (courseKeys.has(this.focusedKey)) this.focusedKey = "";
       this.noticeMsg(this.lang === "zh" ? "已删除 " + g.name : `Deleted ${this.groupLabel(g.name)}`);
     },
     classesAt(day, period) {
@@ -1555,12 +1895,17 @@ export default {
   background: #edf3ff;
   color: #416bd4;
 }
-.week-layout > .import-plan-button {
+.week-layout > .import-actions {
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+  align-self: stretch;
+  margin-top: 15px;
+}
+.week-layout > .import-actions > button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  align-self: stretch;
-  margin-top: 15px;
   padding: 0 14px;
   border: 1px solid #4773df;
   border-radius: 8px;
@@ -2017,6 +2362,49 @@ td {
   margin: 8px 12px;
   border: 1px solid #e3e8ef;
   border-radius: 6px;
+  overflow: hidden;
+}
+.parent-group {
+  margin: 10px 12px;
+  border: 1px solid #d8e3f2;
+  border-radius: 8px;
+  overflow: hidden;
+  background: #f8faff;
+}
+.parent-group-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  padding: 8px 10px;
+  background: #eaf2ff;
+  color: #294f79;
+}
+.parent-group-head b {
+  font-size: 14px;
+}
+.parent-group-head em {
+  margin-left: auto;
+  color: #526f90;
+  font-size: 11px;
+  font-style: normal;
+  white-space: nowrap;
+}
+.parent-group-children {
+  padding: 1px 0;
+}
+.parent-group-children:empty::before {
+  content: "暂无小课组";
+  display: block;
+  padding: 9px 10px;
+  color: #8b99ab;
+  font-size: 11px;
+}
+.course-term {
+  margin: 0;
+  padding: 9px 12px 0;
+  color: #293852;
+  font-size: 12px;
 }
 .group.dragging {
   opacity: 0.48;
@@ -2207,6 +2595,29 @@ td {
   color: #fff;
   padding: 9px;
 }
+.campus-modal {
+  width: min(360px, calc(100% - 30px));
+}
+.campus-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 8px 0;
+  padding: 10px 11px;
+  border: 1px solid #dce4ee;
+  border-radius: 6px;
+  color: #52647d;
+  cursor: pointer;
+}
+.campus-option.selected {
+  border-color: #4773df;
+  background: #edf4ff;
+  color: #2f61bb;
+}
+.campus-modal .primary:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
 .modal-actions {
   display: flex;
   gap: 8px;
@@ -2287,6 +2698,9 @@ td {
   margin: 18px 0 8px;
   color: #6b778b;
   line-height: 1.6;
+}
+.failed-reasons {
+  color: #d6534b;
 }
 .secondary {
   flex: 1;
@@ -2370,6 +2784,12 @@ td {
   .filters {
     grid-template-columns: repeat(3, 1fr);
   }
+}
+.import-steps {
+  margin: 0 0 12px;
+  padding-left: 20px;
+  color: #52647d;
+  line-height: 1.65;
 }
 .course-list article.selected,
 .group-list article.selected {

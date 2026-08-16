@@ -2,6 +2,8 @@
 node_modules
 /dist
 /my_own_plan/
+/*.mht
+/*.mhtml
 
 # local env files
 .env.local
