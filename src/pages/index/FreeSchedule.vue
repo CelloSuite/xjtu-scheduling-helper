@@ -66,14 +66,11 @@
         />
       </section>
       <div class="import-actions">
-        <button class="import-catalog-button" @click="openCatalogImport">
-          {{ lang === "zh" ? "导入课程目录" : "Import Course" }}
+        <button class="import-plan-button" @click="importMenu = true">
+          {{ lang === "zh" ? "导入…" : "Import…" }}
         </button>
-        <button class="import-plan-button" @click="startPlanImport">
-          {{ t("importPlan") }}
-        </button>
-        <button class="export-schedule-button" @click="exportSchedule">
-          {{ lang === "zh" ? "导出为…" : "Export…" }}
+        <button class="export-schedule-button" @click="exportMenu = true">
+          {{ lang === "zh" ? "导出…" : "Export…" }}
         </button>
       </div>
     </div>
@@ -643,6 +640,34 @@
         </div>
       </section>
     </div>
+    <div v-if="exportMenu" class="mask" @click.self="exportMenu = false">
+      <section class="modal export-menu-modal">
+        <button class="close" @click="exportMenu = false">×</button>
+        <h2>{{ lang === "zh" ? "选择导出格式" : "Choose export format" }}</h2>
+        <button class="choice" @click="exportMenu = false; exportSchedule()">
+          <b>{{ lang === "zh" ? "导出课程表 CSV" : "Export timetable CSV" }}</b>
+          <small>{{ lang === "zh" ? "按 WakeUp 课程表软件可读取的表格导出" : "Export a format readable by WakeUp timetable" }}</small>
+        </button>
+        <button class="choice" @click="exportMenu = false; exportCourseRoster()">
+          <b>{{ lang === "zh" ? "导出为排课单" : "Export course roster" }}</b>
+          <small>{{ lang === "zh" ? "导出 CSV 排课单" : "Export a CSV course roster" }}</small>
+        </button>
+      </section>
+    </div>
+    <div v-if="importMenu" class="mask" @click.self="importMenu = false">
+      <section class="modal export-menu-modal">
+        <button class="close" @click="importMenu = false">×</button>
+        <h2>{{ lang === "zh" ? "选择导入内容" : "Choose content to import" }}</h2>
+        <button class="choice" @click="importMenu = false; openCatalogImport()">
+          <b>{{ lang === "zh" ? "导入课程目录" : "Import Course Directory" }}</b>
+          <small>{{ lang === "zh" ? "读取教务系统课程目录的 MHTML 文件，并覆盖当前课程数据。" : "Read a GMIS course-catalog MHTML file and replace the current course data." }}</small>
+        </button>
+        <button class="choice" @click="importMenu = false; startPlanImport()">
+          <b>{{ lang === "zh" ? "导入培养方案" : "Import Training Plan" }}</b>
+          <small>{{ lang === "zh" ? "读取个人培养计划的 MHTML 文件，按课程及课组导入培养方案。" : "Read a study-plan MHTML file and import its courses and groups." }}</small>
+        </button>
+      </section>
+    </div>
     <div v-if="exportWarning" class="mask" @click.self="exportWarning = null">
       <section class="modal export-warning-modal">
         <button class="close" @click="exportWarning = null">×</button>
@@ -980,6 +1005,8 @@ export default {
       groupDraft: { type: "外语课组", limit: null, unit: "course" },
       groupModal: null,
       parentMinimumModal: null,
+      exportMenu: false,
+      importMenu: false,
       exportWarning: null,
       exportConflictWeeks: [],
       conflictModal: null,
@@ -2589,6 +2616,58 @@ export default {
             );
           }),
         );
+      this.downloadCsv(rows, "XJTU_Schedule_Plan.csv");
+      this.noticeMsg(this.lang === "zh" ? `已导出 ${rows.length - 1} 条排课记录` : `Exported ${rows.length - 1} schedule entries`);
+    },
+    confirmExportSchedule() {
+      this.exportWarning = null;
+      this.exportSchedule(true);
+    },
+    exportCourseRoster() {
+      const selectedCourses = this.courses.filter((course) => this.activeKeys.includes(course.key));
+      if (!selectedCourses.length) {
+        this.noticeMsg(this.lang === "zh" ? "没有可导出的已上课表课程" : "No scheduled courses to export");
+        return;
+      }
+      const rows = [["课组序号", "课组类型", "课程号", "课程名称", "班级", "教师", "上课时间", "地点", "学分"]];
+      selectedCourses.forEach((course) => {
+        const groupInfo = this.courseGroupInfo(course);
+        rows.push([
+          groupInfo.number,
+          groupInfo.type,
+          this.csvText(course.id || "无"),
+          course.name || "无",
+          course.className || "无",
+          course.teacher || "无",
+          course.meetings.length ? this.courseTime(course) : "无",
+          course.rooms || "无",
+          course.credit || "/",
+        ]);
+      });
+      this.downloadCsv(rows, "XJTU_Course_Roster.csv");
+      this.noticeMsg(this.lang === "zh" ? `已导出 ${selectedCourses.length} 门上课表课程` : `Exported ${selectedCourses.length} scheduled courses`);
+    },
+    courseGroupInfo(course) {
+      const relatedGroups = this.groups.filter((group) => group.courseKeys.includes(course.key));
+      if (!relatedGroups.length) {
+        return {
+          number: this.lang === "zh" ? "未分组" : "Ungrouped",
+          type: this.lang === "zh" ? "未分组课程" : "Ungrouped course",
+        };
+      }
+      const groupNumbers = relatedGroups.map((group) => {
+        const match = String(group.name || "").match(/（(\d+)）$/);
+        return match ? match[1] : group.name || "-";
+      });
+      return {
+        number: groupNumbers.join("、"),
+        type: [...new Set(relatedGroups.map((group) => group.type || group.name || "-"))].join("、"),
+      };
+    },
+    csvText(value) {
+      return `="${String(value).replace(/"/g, '""')}"`;
+    },
+    downloadCsv(rows, filename) {
       const escape = (value) => `"${String(value).replace(/"/g, '""')}"`;
       const blob = new Blob([`\uFEFF${rows.map((row) => row.map(escape).join(",")).join("\r\n")}`], {
         type: "text/csv;charset=utf-8",
@@ -2596,16 +2675,11 @@ export default {
       const link = document.createElement("a");
       const url = URL.createObjectURL(blob);
       link.href = url;
-      link.download = "XJTU_Schedule_Plan.csv";
+      link.download = filename;
       document.body.appendChild(link);
       link.click();
       link.remove();
       setTimeout(() => URL.revokeObjectURL(url), 0);
-      this.noticeMsg(this.lang === "zh" ? `已导出 ${rows.length - 1} 条排课记录` : `Exported ${rows.length - 1} schedule entries`);
-    },
-    confirmExportSchedule() {
-      this.exportWarning = null;
-      this.exportSchedule(true);
     },
     formatWeeks(weeks) {
       const list = [...new Set(weeks)].sort((a, b) => a - b);
